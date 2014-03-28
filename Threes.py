@@ -31,6 +31,9 @@ class Board:
     def at(self, row, col):
         return self.cells[row][col]
 
+    def put(self, row, col, v):
+        self.cells[row][col] = v
+
     def rotate(self, n):
         res = Board()
         n = (n + 4) % 4
@@ -53,17 +56,17 @@ def slideLeft(board):
                 spaces.append((row, 3))
                 a = 0
             else:
-                a = board.cells[row][src]
+                a = board.at(row, col)
             move_piece = a
 
             if src == col and src < 3:
-                b = board.cells[row][col+1]
+                b = board.at(row, col+1)
                 if b != 0 and (a == 0 or a+b == 3 or (a >= 3 and a == b)):
                     move_piece = b # We move piece b into this slot
                     a += b
                     src += 1
-            res.cells[row][col] = a
-            moveBoard.cells[row][col] = move_piece if src != col and a != 0 else -1
+            res.put(row, col, a)
+            moveBoard.put(row, col, move_piece if src != col and a != 0 else -1)
             src += 1
     return res, moveBoard, spaces
 
@@ -72,32 +75,77 @@ def gen_package(count):
     random.shuffle(items)
     return items
 
+class Ranker:
+    def __init__(self, empty_desire, highway_desire, bignum_desire, bottomright_desire):
+        self.empty_desire = empty_desire
+        self.highway_desire = highway_desire
+        self.bignum_desire = bignum_desire
+        self.bottomright_desire = bottomright_desire
+
+        def rank(self, board):
+
+
+BIG = 3
+TERM1 = [4,4,4,0]
+TERM2 = [4,4,4,1]
+
+class GameWatcher:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.seen = [0, 0, 0, 0] # Count of what we have seen so far 1-3 or big ignore idx 0
+
+    def update_piece(self, p):
+        # Handle case where we were maybe expecting a big number, but didn't get it
+        if self.seen == TERM1 and p <= 3:
+            self.reset()
+        i = max(p - 1, 3)
+        self.seen[i] += 1
+        if self.seen == TERM2:
+            self.reset()
+        if sum(self.seen) > 13:
+            print "Game did not follow expected distribution - got %s " % self.seen
+
+    def probabilities(self):
+        possible = [4 - x for x in self.seen[:3]]
+        if self.seen[3]:
+            possible.append(0)
+        else:
+            possible.append(0.5)
+        tot = sum(possible)
+        return [x / tot for x in possible]
+
 class Game:
     def __init__(self):
         self.board = Board()
         self.package = []
-        # Initial package
+
         insert = []
         for row in range(4):
             insert += [(row, col) for col in range(4)]
         random.shuffle(insert)
-        package = gen_package(3)
-        for c, v in zip(insert, package):
-            row, col = c
-            self.board.cells[row][col] = v
+        for row, col in insert[0:9]:
+            self.board.put(row, col, self.pop())
+
     def peek(self):
         if len(self.package) == 0:
             self.package = gen_package(4)
             random.shuffle(self.package)
         return self.package[0]
 
+    def pop(self):
+        self.peek() # Force creation of package
+        return self.package.pop(0)
+
+    # Updates self with new board, returns the 'move board' for display
     def move(self, shift):
         tmp = self.board.rotate(shift)
         (tmp, move, spaces) = slideLeft(tmp)
         self.peek()
         if len(spaces) > 0:
             row,col = spaces[random.randint(0,len(spaces)-1)]
-            tmp.cells[row][col] = self.package.pop(0)
+            tmp.put(row, col, self.package.pop(0))
         self.board = tmp.rotate(-shift)
         return move.rotate(-shift)
 
